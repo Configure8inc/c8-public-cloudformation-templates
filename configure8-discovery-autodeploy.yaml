@@ -1,0 +1,168 @@
+Description: C8 discovery scanner cross-account role
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  C8DiscoveryAutoDeployD4DD2306:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Condition:
+              IpAddress:
+                aws:SourceIp:
+                  - 3.134.237.30
+                  - 18.190.3.63
+                  - 3.131.181.75
+                  - 3.210.168.212
+                  - 50.19.64.133
+                  - 52.2.58.185
+            Effect: Allow
+            Principal:
+              AWS: arn:aws:iam::000443732842:role/c8-discovery-job-worker
+          - Action: sts:AssumeRole
+            Condition:
+              IpAddress:
+                aws:SourceIp:
+                  - 3.134.237.30
+                  - 18.190.3.63
+                  - 3.131.181.75
+                  - 3.210.168.212
+                  - 50.19.64.133
+                  - 52.2.58.185
+            Effect: Allow
+            Principal:
+              AWS: arn:aws:iam::000443732842:role/C8-App-Services-task-role
+        Version: "2012-10-17"
+      Description: The role to allow the C8 disovery worker to assume read only scoped access to this account.
+      RoleName: !Join ['-', ['c8-discovery-role', !Select [4, !Split ['-', !Select [2, !Split ['/', !Ref AWS::StackId]]]]]]
+    Metadata:
+      aws:cdk:path: C8-discovery-scanner-role/C8DiscoveryAutoDeploy/Resource
+  C8DiscoverySupplementalPolicy56DEEDA2:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action:
+              - acm:Describe*
+              - acm:List*
+              - apigateway:GET
+              - appmesh:Describe*
+              - appmesh:List*
+              - appsync:List*
+              - athena:List*
+              - autoscaling:Describe*
+              - cloudformation:Describe*
+              - cloudformation:List*
+              - cloudfront:List*
+              - cloudwatch:Describe*
+              - cloudwatch:Get*
+              - cloudwatch:List*
+              - dynamodb:Describe*
+              - dynamodb:List*
+              - ec2:Describe*
+              - ec2:Get*
+              - ecr:Describe*
+              - ecr:List*
+              - ecs:Describe*
+              - ecs:List*
+              - eks:Describe*
+              - eks:List*
+              - elasticloadbalancing:Describe*
+              - elasticmapreduce:Describe*
+              - elasticmapreduce:List*
+              - elasticache:Describe*
+              - elasticache:List*
+              - es:Describe*
+              - es:Get*
+              - es:List*
+              - firehose:Describe*
+              - firehose:List*
+              - glacier:Describe*
+              - glacier:Get*
+              - glacier:List*
+              - glue:Get*
+              - glue:List*
+              - health:Describe*
+              - kafka:Describe*
+              - kafka:Get*
+              - kafka:List*
+              - kinesis:Describe*
+              - kinesis:List*
+              - kinesisanalytics:List*
+              - kinesisanalytics:Describe*
+              - lambda:Get*
+              - lambda:List*
+              - logs:Describe*
+              - logs:Get*
+              - mq:Describe*
+              - mq:List*
+              - pi:DescribeDimensionKeys
+              - pi:GetDimensionKeyDetails
+              - pi:GetResourceMetadata
+              - pi:GetResourceMetrics
+              - pi:ListAvailableResourceDimensions
+              - pi:ListAvailableResourceMetrics
+              - qldb:DescribeLedger
+              - qldb:ListLedgers
+              - qldb:ListTagsForResource
+              - rds:Describe*
+              - rds:List*
+              - redshift:Describe*
+              - resource-groups:Get*
+              - resource-groups:List*
+              - route53:Get*
+              - route53:List*
+              - route53domains:Get*
+              - route53domains:List*
+              - s3:Get*
+              - s3:List*
+              - sagemaker:Describe*
+              - sagemaker:List*
+              - savingsplans:DescribeSavingsPlanRates
+              - savingsplans:DescribeSavingsPlans
+              - savingsplans:DescribeSavingsPlansOfferingRates
+              - savingsplans:DescribeSavingsPlansOfferings
+              - savingsplans:ListTagsForResource
+              - securityhub:Describe*
+              - securityhub:Get*
+              - securityhub:List*
+              - servicediscovery:Get*
+              - servicediscovery:List*
+              - ses:Describe*
+              - ses:Get*
+              - ses:List*
+              - sns:Get*
+              - sns:List*
+              - sqs:Get*
+              - sqs:List*
+              - tag:Get*
+              - timestream:DescribeDatabase
+              - timestream:DescribeEndpoints
+              - timestream:DescribeTable
+              - timestream:ListDatabases
+              - timestream:ListMeasures
+              - timestream:ListTables
+              - timestream:ListTagsForResource
+              - trustedadvisor:Describe*
+              - iam:ListAccountAliases
+            Effect: Allow
+            Resource: "*"
+        Version: "2012-10-17"
+      PolicyName: c8-discovery-supplemental-policy
+      Roles:
+        - Ref: C8DiscoveryAutoDeployD4DD2306
+    Metadata:
+      aws:cdk:path: C8-discovery-scanner-role/C8DiscoverySupplementalPolicy/Resource
+  CDKMetadata:
+    Type: AWS::CDK::Metadata
+    Properties:
+      Analytics: v2:deflate64:H4sIAAAAAAAA/yWLXQrDIBCEz5J3s6mkkNdCDtBiTiCbLZgft+jaEsS7B5unb+YbRoPuB7g1D/uLLc5rl5EDQZ7E4qrGt38m+SRRI/soIaFUZyhyCkhF1ZezO2TDG/2nyhdvDo9ar1SK8jwTLLH76jvoAfpmic61IXlxO4G5eAL97UHPjQAAAA==
+    Metadata:
+      aws:cdk:path: C8-discovery-scanner-role/CDKMetadata/Default
+Outputs:
+  discoveryRoleArn:
+    Description: The ARN of the cross-account role
+    Value:
+      Fn::GetAtt:
+        - C8DiscoveryAutoDeployD4DD2306
+        - Arn

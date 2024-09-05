@@ -1,0 +1,201 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: C8 Cloud formation template to make frequent EC2 and Elastic IP updates
+
+Parameters:
+  ApiKey:
+    Description: C8 Application API key, required to push data through Public API
+    Type: String
+
+  ApiUrl:
+    Description: C8 Application URL, usually it should be https://app.configure8.io
+    Type: String
+    AllowedPattern: ^https://[^\s/$.?#].[^\s]*$
+    Default: "https://app.configure8.io"
+
+Resources:
+  # S3 Bucket for CloudTrail logs
+  CloudTrailS3Bucket:
+    Type: "AWS::S3::Bucket"
+    DependsOn:
+      - CloudTrailProcessingLambda
+    Properties:
+      BucketName: !Join
+        - '-'
+        - - c8-cloud-trail
+          - !Ref AWS::AccountId
+      VersioningConfiguration:
+        Status: "Enabled"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: "s3:ObjectCreated:*"
+            Function: !GetAtt CloudTrailProcessingLambda.Arn
+  CloudTrailBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    DependsOn:
+      - CloudTrailS3Bucket
+    Properties:
+      Bucket: !Ref CloudTrailS3Bucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: "AWSCloudTrailAclCheck"
+            Effect: Allow
+            Principal:
+              Service: 'cloudtrail.amazonaws.com'
+            Action: "s3:GetBucketAcl"
+            Resource: !Sub arn:aws:s3:::${CloudTrailS3Bucket}
+          - Sid: "AWSCloudTrailWrite"
+            Effect: Allow
+            Principal:
+              Service: 'cloudtrail.amazonaws.com'
+            Action: "s3:PutObject"
+            Resource: !Sub arn:aws:s3:::${CloudTrailS3Bucket}/AWSLogs/${AWS::AccountId}/*
+            Condition:
+              StringEquals:
+                's3:x-amz-acl': 'bucket-owner-full-control'
+  # CloudTrail to capture EC2 and Elastic IP events
+  CloudTrail:
+    Type: "AWS::CloudTrail::Trail"
+    DependsOn:
+      - CloudTrailS3Bucket
+      - CloudTrailBucketPolicy
+    Properties: 
+      TrailName: !Sub "c8-cloudtrail"
+      S3BucketName: !Ref CloudTrailS3Bucket
+      IncludeGlobalServiceEvents: true
+      IsLogging: true
+      EventSelectors:
+        - ReadWriteType: All
+          IncludeManagementEvents: true
+
+  # IAM Role for Lambda execution with permissions for S3 and CloudWatch Logs
+  LambdaExecutionRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-lambda-execution-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: "lambda.amazonaws.com"
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: "LambdaS3ExecutionPolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action:
+                  - "s3:GetObject"
+                  - "s3:ListBucket"
+                Resource:
+                  - !Join
+                    - ''
+                    - - "arn:aws:s3:::"
+                      - c8-cloud-trail-
+                      - !Ref AWS::AccountId
+                  - !Join
+                    - ''
+                    - - "arn:aws:s3:::"
+                      - c8-cloud-trail-
+                      - !Ref AWS::AccountId
+                      - '/*'
+              - Effect: "Allow"
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource: "arn:aws:logs:*:*:*"
+
+  # Lambda function triggered by S3 events
+  CloudTrailProcessingLambda:
+    Type: "AWS::Lambda::Function"
+    DependsOn:
+      - LambdaExecutionRole
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-cloudtrail-processor"
+      Handler: "index.handler"
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Runtime: "nodejs16.x"
+      Environment:
+        Variables:
+          API_KEY: !Ref ApiKey
+          APP_URL: !Ref ApiUrl
+          AWS_ACCOUNT: !Ref AWS::AccountId
+          BUCKET:  !Join
+            - '-'
+            - - c8-cloud-trail
+              - !Ref AWS::AccountId
+      Code:
+        ZipFile: |
+          const AWS = require('aws-sdk');
+          const util = require('util');
+          const zlib = require('zlib');
+
+          const gunzip = util.promisify(zlib.gunzip);
+          const s3 = new AWS.S3();
+
+          const hasId = (data) => /"(i|eipalloc)-[a-zA-Z0-9]{17}"/.test(JSON.stringify(data))
+
+          exports.handler = async (event) => {
+            const body = [];
+            for (const item of event.Records) {
+              const response = await s3.getObject({
+                Bucket: item.s3.bucket.name,
+                Key: decodeURIComponent(item.s3.object.key.replace(/\+/g, ' ')),
+              }).promise();
+              JSON.parse((await gunzip(response.Body))).Records
+                .filter((event) => event.eventSource === 'ec2.amazonaws.com' && hasId(event) && !event.eventName.startsWith('Describe') && !event.readOnly)
+                .forEach((event) => body.push(event))
+            }
+
+            if (body.length === 0) {
+              return;
+            }
+            console.log('serhiiEVENTS - 1');
+            console.log(JSON.stringify(body, null, 2));
+            /*
+            fetch(process.env.APP_URL, {
+              method: 'POST',
+              body: JSON.stringify(body),
+              headers: {
+                  'Content-type': 'application/json; charset=UTF-8',
+                  'Api-Key': process.env.API_KEY
+              },
+            })
+              .then((response) => response.json())
+              .then((json) => console.log(json))
+              .catch(error => console.log(error))
+            */
+          };
+      Timeout: 60
+
+  # Permission for S3 to invoke Lambda
+  LambdaInvokePermission:
+    Type: "AWS::Lambda::Permission"
+    DependsOn:
+      - CloudTrailProcessingLambda
+    Properties:
+      FunctionName: !Ref CloudTrailProcessingLambda
+      Action: "lambda:InvokeFunction"
+      Principal: "s3.amazonaws.com"
+      SourceArn: !Join
+        - ''
+        - - "arn:aws:s3:::"
+          - c8-cloud-trail-
+          - !Ref AWS::AccountId
+
+Outputs:
+  S3BucketName:
+    Description: "Name of the S3 bucket for CloudTrail logs"
+    Value: !Ref CloudTrailS3Bucket
+
+  LambdaFunctionName:
+    Description: "Name of the Lambda function triggered by S3 events"
+    Value: !Ref CloudTrailProcessingLambda
