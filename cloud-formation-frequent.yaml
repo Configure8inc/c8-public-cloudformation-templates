@@ -142,7 +142,7 @@ Resources:
           const gunzip = util.promisify(zlib.gunzip);
           const s3 = new S3();
 
-          const hasId = (data) => /"(i|eipalloc)-[a-zA-Z0-9]{17}"/.test(JSON.stringify(data))
+          const hasId = (data) => /"(i|eipalloc|eipassoc)-[a-zA-Z0-9]{17}"/.test(JSON.stringify(data))
 
           exports.handler = async (event) => {
             const body = [];
